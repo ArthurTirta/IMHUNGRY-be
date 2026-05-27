@@ -7,6 +7,10 @@ requires-python = ">=3.12"
 dependencies = [
     "alembic>=1.18.4",
     "fastapi>=0.136.1",
+    "google-api-python-client>=2.196.0",
+    "google-auth-httplib2>=0.4.0",
+    "google-auth-oauthlib>=1.4.0",
+    "google-genai>=2.6.0",
     "psycopg2-binary>=2.9.12",
     "pyjwt>=2.13.0",
     "python-dotenv>=1.2.2",

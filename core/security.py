@@ -3,7 +3,8 @@ import hmac
 import os
 import jwt
 from datetime import datetime, timedelta, timezone
-from fastapi import HTTPException, Header, status
+from fastapi import Depends, HTTPException, Header, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -44,9 +45,8 @@ def decode_token(token: str) -> dict:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
 
 
-def get_current_user(authorization: str = Header(None)) -> dict:
+_bearer_scheme = HTTPBearer()
+
+def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(_bearer_scheme)) -> dict:
     """FastAPI dependency — extract JWT payload from Authorization: Bearer <token>."""
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing token")
-    token = authorization.split(" ", 1)[1]
-    return decode_token(token)
+    return decode_token(credentials.credentials)
