@@ -21,6 +21,8 @@ if config.config_file_name is not None:
 # Import Base + semua model agar autogenerate bisa detect perubahan tabel
 from db.session import Base  # noqa: E402
 import models.user  # noqa: E402, F401
+import models.chat  # noqa: E402, F401
+import models.recipe_local  # noqa: E402, F401
 
 target_metadata = Base.metadata
 
