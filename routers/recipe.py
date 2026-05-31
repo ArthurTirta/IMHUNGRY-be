@@ -13,21 +13,28 @@ router = APIRouter(prefix="/recipe", tags=["recipe"])
 @router.get("/{recipe_id}")
 def get_recipe(
     recipe_id: UUID,
-    user_id: UUID = Depends(get_current_user_id),
+    requester_id: UUID = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
-    recipe = db.query(Library).filter(
-        Library.id == recipe_id,
-        Library.user_id == user_id,
-    ).first()
+    """
+    Detail resep untuk Cook Mode — wajib login.
+    Bisa diakses jika pemilik resep ATAU resep sudah public (global feed).
+    """
+    recipe = db.query(Library).filter(Library.id == recipe_id).first()
     if not recipe:
         raise HTTPException(status_code=404, detail="Recipe tidak ditemukan")
 
+    is_owner = requester_id == recipe.user_id
+    is_public = recipe.visibility == 1
+
+    if not is_owner and not is_public:
+        raise HTTPException(status_code=403, detail="Resep ini masih private")
+
     return {
         "id": str(recipe.id),
-        "session_id": str(recipe.session_id),
+        "session_id": str(recipe.session_id) if is_owner else None,
         "title": recipe.title,
-        "video_id": recipe.video_id,
+        "video_id": recipe.video_id or (recipe.recipe or {}).get("video_id", ""),
         "recipe": recipe.recipe,
         "visibility": recipe.visibility,
         "stars": recipe.stars,

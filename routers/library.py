@@ -77,6 +77,7 @@ def list_public_library(db: Session = Depends(get_db)):
     return [
         LibraryItem(
             id=row.Library.id,
+            session_id=row.Library.session_id,
             title=row.Library.title,
             video_id=row.Library.video_id,
             stars=row.Library.stars,
@@ -104,6 +105,7 @@ def list_my_recipes(
     return [
         LibraryItem(
             id=r.id,
+            session_id=r.session_id,
             title=r.title,
             video_id=r.video_id,
             stars=r.stars,
@@ -112,6 +114,38 @@ def list_my_recipes(
             created_at=r.created_at,
         )
         for r in rows
+    ]
+
+
+@router.get("/starred", response_model=list[LibraryItem])
+def list_starred_recipes(
+    user_id: UUID = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    """Resep global yang sudah diberi bintang oleh user yang login."""
+    rows = (
+        db.query(Library, User.username)
+        .join(TutorialStar, TutorialStar.recipe_id == Library.id)
+        .join(User, Library.user_id == User.id)
+        .filter(
+            TutorialStar.user_id == user_id,
+            Library.visibility == 1,
+        )
+        .order_by(Library.stars.desc(), Library.created_at.desc())
+        .all()
+    )
+    return [
+        LibraryItem(
+            id=row.Library.id,
+            session_id=row.Library.session_id,
+            title=row.Library.title,
+            video_id=row.Library.video_id,
+            stars=row.Library.stars,
+            visibility=row.Library.visibility,
+            creator=row.username,
+            created_at=row.Library.created_at,
+        )
+        for row in rows
     ]
 
 

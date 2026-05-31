@@ -10,11 +10,20 @@ from youtube_transcript_api import YouTubeTranscriptApi
 from youtube_transcript_api._errors import NoTranscriptFound, TranscriptsDisabled
 
 
+def _get_youtube_api_key() -> str:
+    """Ambil YouTube Data API key dari env (YOUTUBE_API_KEY atau YOUTUBE_API)."""
+    for name in ("YOUTUBE_API_KEY", "YOUTUBE_API"):
+        value = os.getenv(name)
+        if value:
+            return value.strip()
+    raise RuntimeError(
+        "YouTube API key tidak ditemukan. Set YOUTUBE_API_KEY di file .env"
+    )
+
+
 def youtube_search(query: str, max_results: int = 5) -> list:
     """Cari video YouTube menggunakan API key, kembalikan list metadata video."""
-    api_key = os.getenv("YOUTUBE_API")
-    if not api_key:
-        raise RuntimeError("YOUTUBE_API key tidak ditemukan di environment")
+    api_key = _get_youtube_api_key()
 
     youtube = googleapiclient.discovery.build("youtube", "v3", developerKey=api_key)
     response = youtube.search().list(

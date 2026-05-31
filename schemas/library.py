@@ -19,6 +19,7 @@ class UnpublishRequest(BaseModel):
 
 class LibraryItem(BaseModel):
     id: UUID
+    session_id: UUID
     title: str
     video_id: str
     stars: int

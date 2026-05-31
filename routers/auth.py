@@ -2,13 +2,13 @@ from fastapi import APIRouter, HTTPException, Depends, status
 from sqlalchemy.orm import Session
 from db.session import get_db
 from models.user import User
-from schemas.auth import RegisterRequest, RegisterResponse, LoginRequest, LoginResponse
+from schemas.auth import RegisterRequest, LoginRequest, LoginResponse
 from core.security import hash_password, verify_password, create_access_token
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-@router.post("/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/register", response_model=LoginResponse, status_code=status.HTTP_201_CREATED)
 def register(payload: RegisterRequest, db: Session = Depends(get_db)):
     existing = db.query(User).filter(User.username == payload.username).first()
     if existing:
@@ -25,7 +25,14 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)):
     db.add(user)
     db.commit()
     db.refresh(user)
-    return RegisterResponse(message="User registered successfully", user_id=user.id)
+
+    token = create_access_token({"sub": str(user.id), "username": user.username})
+    return LoginResponse(
+        access_token=token,
+        user_id=user.id,
+        username=user.username,
+        location=user.location,
+    )
 
 
 @router.post("/login", response_model=LoginResponse)

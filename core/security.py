@@ -47,10 +47,25 @@ def decode_token(token: str) -> dict:
 
 
 _bearer_scheme = HTTPBearer()
+_bearer_optional = HTTPBearer(auto_error=False)
+
 
 def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(_bearer_scheme)) -> dict:
     """FastAPI dependency — extract JWT payload from Authorization: Bearer <token>."""
     return decode_token(credentials.credentials)
+
+
+def get_optional_user_id(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_optional),
+) -> uuid_module.UUID | None:
+    """Parse user UUID from JWT jika ada; return None untuk akses publik tanpa login."""
+    if not credentials:
+        return None
+    try:
+        payload = decode_token(credentials.credentials)
+        return uuid_module.UUID(str(payload["sub"]))
+    except HTTPException:
+        return None
 
 
 def get_current_user_id(current_user: dict = Depends(get_current_user)) -> uuid_module.UUID:
