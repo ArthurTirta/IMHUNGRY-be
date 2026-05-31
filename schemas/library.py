@@ -1,33 +1,38 @@
 from pydantic import BaseModel
 from uuid import UUID
+from datetime import datetime
 
 
 class PublishRequest(BaseModel):
-    session_id: UUID
-    user_id: int
-    selected_version: str
-    visibility: int = 1
+    recipe_id: UUID  # UUID dari tabel library yang ingin dipublish
 
 
 class PublishResponse(BaseModel):
     message: str
-    tutorial_id: int
+    recipe_id: UUID
+    visibility: int
+
+
+class UnpublishRequest(BaseModel):
+    recipe_id: UUID
 
 
 class LibraryItem(BaseModel):
-    tutorial_id: int
+    id: UUID
     title: str
-    creator: str
     video_id: str
     stars: int
+    visibility: int
+    creator: str
+    created_at: datetime
 
 
 class LibraryDetail(LibraryItem):
-    tutorial_data: dict
+    recipe: dict  # full JSONB tutorial data
 
 
 class StarRequest(BaseModel):
-    user_id: int
+    pass  # user diambil dari JWT token
 
 
 class StarResponse(BaseModel):

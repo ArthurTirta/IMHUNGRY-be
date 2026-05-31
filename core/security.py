@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import os
+import uuid as uuid_module
 import jwt
 from datetime import datetime, timedelta, timezone
 from fastapi import Depends, HTTPException, Header, status
@@ -50,3 +51,14 @@ _bearer_scheme = HTTPBearer()
 def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(_bearer_scheme)) -> dict:
     """FastAPI dependency — extract JWT payload from Authorization: Bearer <token>."""
     return decode_token(credentials.credentials)
+
+
+def get_current_user_id(current_user: dict = Depends(get_current_user)) -> uuid_module.UUID:
+    """Parse user UUID from JWT `sub` claim."""
+    try:
+        return uuid_module.UUID(str(current_user["sub"]))
+    except (ValueError, KeyError, TypeError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid user id in token",
+        )

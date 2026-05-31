@@ -29,20 +29,38 @@ TOOL_DECLARATIONS = [
     {
         "name": "ai_tutorial_generator",
         "description": (
-            "Gunakan tool ini ketika user meminta resep, tutorial memasak, atau cara membuat "
-            "makanan/minuman tertentu. Tool ini akan mencari video YouTube yang relevan, "
-            "mengambil transcript video, dan membuat tutorial lengkap dengan bahan, alat, "
-            "dan langkah-langkah memasak berdasarkan timestamp nyata dari video."
+            "Tool utama untuk semua kebutuhan resep dan tutorial memasak. "
+            "Mode CREATE: buat resep baru dari video YouTube (butuh food_name). "
+            "Mode QUERY: jawab pertanyaan follow-up atau perbarui resep yang sudah ada "
+            "(butuh recipe_id + query). Output bisa teks saja, resep diperbarui, atau keduanya."
         ),
         "parameters": {
             "type": "object",
             "properties": {
                 "food_name": {
                     "type": "string",
-                    "description": "Nama makanan atau minuman yang ingin dibuatkan tutorialnya",
+                    "description": (
+                        "Nama makanan/minuman. Wajib untuk resep BARU. "
+                        "Opsional untuk follow-up (bisa kosong jika recipe_id sudah jelas)."
+                    ),
+                },
+                "recipe_id": {
+                    "type": "string",
+                    "description": (
+                        "UUID resep yang sudah ada di session. Wajib untuk follow-up/query "
+                        "(substitusi bahan, tips, ubah resep, klarifikasi langkah)."
+                    ),
+                },
+                "query": {
+                    "type": "string",
+                    "description": (
+                        "Pertanyaan atau permintaan spesifik user tentang resep. "
+                        "Contoh: 'apa pengganti kecap manis?', 'buat versi lebih pedas'. "
+                        "Wajib diisi bersama recipe_id untuk mode follow-up."
+                    ),
                 },
             },
-            "required": ["food_name"],
+            "required": [],
         },
     },
     {
@@ -66,22 +84,27 @@ TOOL_DECLARATIONS = [
 
 SYSTEM_PROMPT = """Kamu adalah asisten pintar bernama "ImHungry" yang membantu user menemukan resep dan tutorial memasak.
 
-Kemampuanmu:
-- Menjawab pertanyaan umum seputar makanan, memasak, dan kuliner
-- Memanggil `ai_tutorial_generator` ketika user ingin membuat resep atau tutorial BARU
-- Memanggil `get_recipe_by_id` ketika user ingin melihat resep yang sudah pernah dibuat sebelumnya
+Kemampuanmu via tool `ai_tutorial_generator` (SATU tool untuk semua kebutuhan resep):
+1. CREATE — user minta resep/tutorial BARU:
+   - Panggil dengan food_name (wajib)
+   - Jangan isi recipe_id atau query
+2. QUERY — user bertanya tentang resep yang SUDAH ADA (substitusi, tips, ubah versi, klarifikasi):
+   - Panggil dengan recipe_id (dari ringkasan percakapan) + query (pertanyaan user)
+   - food_name opsional
+   - JANGAN jawab sendiri — serahkan ke tool
+
+Tool `get_recipe_by_id`:
+- Hanya untuk menampilkan ulang card resep yang sudah ada tanpa pertanyaan baru
 
 Aturan penting:
-- JANGAN pernah menyebut recipe_id atau UUID kepada user dalam jawabanmu
-- KAMU WAJIB selalu membalas dengan teks kepada user, tidak boleh diam atau mengembalikan respons kosong
-- JANGAN mengarang atau menebak isi recipe — jika user meminta melihat recipe lama, KAMU WAJIB memanggil `get_recipe_by_id` menggunakan ID dari ringkasan percakapan
-- Ketika recipe berhasil ditampilkan (dari tool manapun), KAMU WAJIB menulis 2-3 kalimat berisi:
-  1. Kalimat pembuka yang menyebut nama makanan
-  2. Ringkasan singkat: jumlah bahan dan estimasi budget dari hasil tool
-  3. Kalimat penutup (contoh: "Selamat memasak!")
-- JANGAN tulis ulang isi detail recipe — cukup ringkasan di atas, data lengkap otomatis ditampilkan sistem
-- Jika user bertanya hal umum → jawab langsung tanpa tool
-- Selalu ramah dan gunakan Bahasa Indonesia
+- JANGAN pernah menyebut recipe_id atau UUID kepada user
+- KAMU WAJIB selalu membalas dengan teks kepada user
+- JANGAN mengarang isi recipe — untuk follow-up WAJIB panggil ai_tutorial_generator dengan recipe_id + query
+- Mode CREATE: tulis 2-3 kalimat intro (nama makanan, jumlah bahan, budget)
+- Mode QUERY: tool akan mengembalikan jawaban teks — ringkas atau parafrase jika perlu, jangan contradict tool
+- JANGAN tulis ulang detail recipe lengkap — card otomatis ditampilkan sistem
+- Pertanyaan umum non-resep → jawab langsung tanpa tool
+- Selalu ramah, Bahasa Indonesia
 """
 
 
@@ -103,7 +126,7 @@ def process_message(
     if not payload.message:
         raise HTTPException(status_code=400, detail="Message is required")
 
-    user_id = int(current_user["sub"])
+    user_id = uuid_module.UUID(str(current_user["sub"]))
     user_message = payload.message
     print(f"📩 [GeneralAI] user_id={user_id} msg={user_message[:60]}", flush=True)
 
@@ -169,6 +192,7 @@ def process_message(
         )
 
         generated_recipe_id: str | None = None
+        tool_answer_text: str | None = None
 
         for iteration in range(5):
             if not response.candidates:
@@ -188,11 +212,13 @@ def process_message(
 
             print(f"🔧 [GeneralAI] Iteration {iteration + 1}: {len(function_calls)} call(s)", flush=True)
 
-            tool_responses, recipe_id_from_tools = handle_tool_calls(
+            tool_responses, recipe_id_from_tools, text_from_tools = handle_tool_calls(
                 function_calls, user_location, db, chat_session.id, user_id
             )
             if recipe_id_from_tools:
                 generated_recipe_id = recipe_id_from_tools
+            if text_from_tools:
+                tool_answer_text = text_from_tools
 
             history.append(types.Content(
                 role="user",
@@ -205,9 +231,11 @@ def process_message(
                 contents=history,
             )
 
-        # Ekstrak teks intro dari Gemini
+        # Prioritas jawaban: teks dari Tutorial AI (mode query) > teks General AI > fallback
         ai_intro_text = ""
-        if response.candidates and response.candidates[0].content:
+        if tool_answer_text:
+            ai_intro_text = tool_answer_text.strip()
+        elif response.candidates and response.candidates[0].content:
             for part in response.candidates[0].content.parts:
                 if hasattr(part, "text") and part.text:
                     ai_intro_text = part.text.strip()

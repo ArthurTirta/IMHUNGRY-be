@@ -27,6 +27,12 @@ class ChatMessageResponse(BaseModel):
     messages: list[MessageEntry]
 
 
+class ChatSessionDetail(BaseModel):
+    session_id: UUID
+    title: str | None = None
+    messages: list[MessageEntry]
+
+
 class ChatHistoryItem(BaseModel):
     session_id: UUID
     title: str | None = None
